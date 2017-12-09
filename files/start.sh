@@ -1,17 +1,28 @@
-#!/bin/sh
+#!/bin/bash
 if [ ! -f /conf/aria2.conf ]; then
 	cp /conf-copy/aria2.conf /conf/aria2.conf
-	if [ $SECRET ]; then
-		echo "rpc-secret=${SECRET}" >> /conf/aria2.conf
-	fi
 fi
 if [ ! -f /conf/on-complete.sh ]; then
 	cp /conf-copy/on-complete.sh /conf/on-complete.sh
 fi
 
-chmod +x /conf/on-complete.sh
-touch /conf/aria2.session
+GROUP_NAME=aria2
+USER_NAME=aria2
+USER_ID=${PUID:-9001}
+GROUP_ID=${PGID:-9001}
 
-darkhttpd /aria2-webui --port 80 &
-darkhttpd /data --port 8080 &
-aria2c --conf-path=/conf/aria2.conf
+echo "Add group \"${GROUP_NAME}\" with GID: ${GROUP_ID}"
+addgroup -g ${GROUP_ID} aria2 || export GROUP_NAME=`getent group | grep ${GROUP_ID} | cut -d: -f1` && echo "Now group name changed to ${GROUP_NAME}."
+echo "Add user \"${USER_NAME}\" with UID: ${USER_ID}"
+adduser -D -H -u ${USER_ID} -G ${GROUP_NAME} ${USER_NAME} || export USER_NAME=`getent passwd | grep ${USER_ID}:${GROUP_ID} | cut -d: -f1` && echo "Now user name changed to ${USER_NAME}."
+
+chown -R ${USER_NAME}:${GROUP_NAME} /conf
+chown -R ${USER_NAME}:${GROUP_NAME} /conf-copy
+su -c "mkdir -p /data/incomplete" ${USER_NAME}
+su -c "mkdir -p /data/complete" ${USER_NAME}
+
+chmod +x /conf/on-complete.sh
+su -c "touch /conf/aria2.session" ${USER_NAME}
+
+echo "Starting aria2..."
+su -c "aria2c --conf-path=/conf/aria2.conf" ${USER_NAME}
